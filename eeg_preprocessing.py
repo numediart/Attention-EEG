@@ -11,4 +11,6 @@ if not os.path.exists(data_path+'psd.npy'):
 else:
     spectral = np.load(data_path+'psd.npy', allow_pickle=True).all()
 
+print('ffffffff')
+
 print(spectral)
