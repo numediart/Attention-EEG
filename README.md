@@ -27,3 +27,17 @@ In order to run the codes, the following libraries (and their corresponding depe
 
 Installation with pip: `pip install -r requirements.txt`
 Import of the environment with conda: `conda env create -f environment.yml`
+
+## Citation
+
+If you use the dataset, please cite the original papers: 
+
+	@inproceedings{delvigne_attention_2020,
+		title = {Attention {Estimation} in {Virtual} {Reality} with {EEG} based {Image} {Regression}},
+		doi = {10.1109/AIVR50618.2020.00012},
+		booktitle = {2020 {IEEE} {International} {Conference} on {Artificial} {Intelligence} and {Virtual} {Reality} ({AIVR})},
+		author = {Delvigne, V. and Wannous, H. and Vandeborre, J.-P. and Ris, L. and Dutoit, T.},
+		month = dec,
+		year = {2020},
+		pages = {10--16},
+	}
