@@ -1,10 +1,10 @@
-"""
+'''
 An original implementation of Hierarchical Graph Pooling with Structure Learning (Zhang et al., 2019) is available at
 https://github.com/cszhangzhen/HGP-SL.
 See `Hierarchical Graph Pooling with Structure LearningHierarchical Graph Pooling with Structure Learning, AAAI 2020`
 for detailed description.
 We make some light modifications to make it work with EEG signals.
-"""
+'''
 
 from torch_geometric.nn import GCNConv
 from torch_geometric.nn import global_max_pool, global_mean_pool, global_add_pool
@@ -389,7 +389,7 @@ class GraphNet(nn.Module):
         self.conv1 = GCNConv(3, dim)
         self.conv2 = GCN(dim, 2*dim)
         self.fc = nn.Sequential(
-            nn.Linear(2*dim, 4),
+            nn.Linear(dim, 4),
             nn.Softmax()
         )
 
@@ -400,9 +400,9 @@ class GraphNet(nn.Module):
         x, edge_index, batch = data.x, data.edge_index, data.batch
 
         x = F.relu(self.conv1(x, edge_index, None))
-        x, edge_index, edge_attr, batch = self.pool1(x, edge_index, None, batch)
+        #x, edge_index, edge_attr, batch = self.pool1(x, edge_index, None, batch)
 
-        x = F.relu(self.conv2(x, edge_index, None))
+        #x = F.relu(self.conv2(x, edge_index, None))
 
         x = global_add_pool(x, batch)
         x = F.dropout(x, p=0.5)

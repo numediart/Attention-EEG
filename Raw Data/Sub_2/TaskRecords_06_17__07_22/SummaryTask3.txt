@@ -1,2 +1,0 @@
-Total Number of Spheres: 136
- Mean Time: 0.2733333

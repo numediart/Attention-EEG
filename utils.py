@@ -1,16 +1,36 @@
-import numpy as np
+'''
+Created by Victor Delvigne
+ISIA Lab, Faculty of Engineering University of Mons, Mons (Belgium)
+victor.delvigne@umons.ac.be
+Source: Delvigne, et al."PhyDAA: Physiological Dataset Assessing Attention" IEEE Transaction on Circuits and Systems for Video Technology (TCSVT) (2016).
+Copyright (C) 2021 - UMons
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+
+'''
+
 import math as m
+import cv2 as cv
 
 import os
 import mne
 import torch
-import glob
 import warnings
+import numpy as np
 
 from scipy.interpolate import griddata, interp1d
 from sklearn.preprocessing import scale
 from tqdm import tqdm
-from torch_geometric.data import Data, Dataset, DataLoader
+#from torch_geometric.data import Data, Dataset, DataLoader
 from torch.utils.data import random_split, Subset
 
 from torch.utils.tensorboard import SummaryWriter
@@ -38,6 +58,7 @@ def raw_eye(path_raw, sub_dir):
 
 
 def raw_eeg(path_raw, sub_dir, f_s=500, task_duration=4.25):
+    dtime = 250
     eeg_info = {}
     path_sub = path_raw + sub_dir
     for r, d, f in os.walk( path_sub ):
@@ -50,19 +71,16 @@ def raw_eeg(path_raw, sub_dir, f_s=500, task_duration=4.25):
                 raw = mne.io.read_raw_fif( path_file, preload=True )  # load file
 
             if ('fif' in file) or ('vhdr' in file):
-
-                raw.filter( .05, None, fir_design='firwin' )
-                raw.filter( None, 50., fir_design='firwin' )
+                raw = raw.filter( .5, None, fir_design='firwin' )
+                raw = raw.filter( None, 50., fir_design='firwin' )
 
                 event, event_id = mne.events_from_annotations( raw )  # extract event array and event_id dict
 
-                # time = event[event[:, -1] == np.unique(event[:, -1])[2], 0]  # keep only the event corresponding to
                 time = event
-                # stimuli
 
                 t = []
                 for i in range( len( time ) ):
-                    if time[i, 0] - time[i - 1, 0] > 250 or time[i, 2] != time[
+                    if time[i, 0] - time[i - 1, 0] > dtime or time[i, 2] != time[
                         i - 1, 2]:  # merge stimuli with ISI < 0.5
                         t.append( [time[i, 0], 0, time[i, 2]] )
                 t = np.asarray( t )
@@ -91,19 +109,16 @@ def raw_eeg(path_raw, sub_dir, f_s=500, task_duration=4.25):
                 picks = mne.pick_types( raw.info, meg=True, eeg=True, stim=False, eog=True,
                                         include=[], exclude='bads' )
                 epochs_t2 = mne.Epochs( raw, event_t2, event_id, tmin=-1, tmax=3, picks=picks,
-                                        baseline=(None, 0), reject=None,
-                                        preload=True )
+                                        baseline=(None, 0), reject=None, preload=True )
                 epochs_t3 = mne.Epochs( raw, event_t3, event_id, tmin=-1, tmax=3, picks=picks,
-                                        baseline=(None, 0), reject=None,
-                                        preload=True )
+                                        baseline=(None, 0), reject=None, preload=True )
 
-                # f_s = raw.info['sfreq']
+                #resampling to accelerate feature extraction time
+                epochs_t2 = epochs_t2.resample(250)
+                epochs_t3 = epochs_t3.resample(250)
 
                 eeg_info['task2'] = epochs_t2.get_data()
                 eeg_info['task3'] = epochs_t3.get_data()
-
-                # eeg_info['task2'] = epochs.get_data()[np.argwhere(event[:, 0] < event[t_mid, 0])]
-                # eeg_info['task3'] = epochs.get_data()[np.argwhere(event[:, 0] >= event[t_mid, 0])]
 
     return eeg_info
 
@@ -169,7 +184,7 @@ def Eye_preprocess(Eye_track):
     for s in range( len( Eye_track ) ):
         x = Eye_track[s]['task2']
         x = x[::2] + x[1::2]
-        task2.append( x )
+        task2.append(x)
         task3.append( Eye_track[s]['task3'] )
 
     task2 = np.concatenate( task2 )
@@ -184,10 +199,9 @@ def Eye_preprocess(Eye_track):
     g_m_s_t3 = np.mean( task3 )
     g_std_s_t3 = np.std( task3 )
 
-    x = [0.1, 0.3, 0.725, 1.15]
-    y = [90, 50, 35, 7.5]  # values deduced from mean std
+    x = [0.1, 0.3, 0.725, 1.15] # values deduced from mean std
+    y = [90, 50, 35, 7.5]  # corresponding score
 
-    #a, b, c = np.polyfit( x, y, 2 )
     a, b, c, d = np.polyfit(x, y, 3)
 
     task2 = []
@@ -255,7 +269,7 @@ def elec_proj(loc_3d):
     return np.asarray( locs_2d )
 
 
-"""     EEG PREPROCESSING       """
+"""     EEG PREPROCESSING     +     FEATURE EXTRACTION  """
 
 
 def mean_filtering(raw_eeg):
@@ -265,12 +279,24 @@ def mean_filtering(raw_eeg):
                 raw_eeg[s][k][epoch][0] -= raw_eeg[s][k][epoch][0].mean( axis=0 )
     return raw_eeg
 
+def down_sampling(raw_eeg, fs=250, f_down=100):
+    down_eeg = []
+    for s in range( len( raw_eeg ) ):
+        for k in raw_eeg[s].keys():
+            for epoch in range( raw_eeg[s][k].shape[0] ):
+                mne_epoch = array_to_epoch(raw_eeg[s][k][epoch])
+                mne_epoch.resample(f_down)
+                down_eeg.append(mne_epoch.get_data())
+    down_eeg = np.asarray(down_eeg).swapaxes(1,2)
+    down_eeg = 1e-5+(down_eeg - down_eeg.min())/np.max(down_eeg-down_eeg.min()) #avoid issues with images generation
+    return down_eeg
+
 
 def array_to_epoch(array):
     ch_names = ['FP1', 'Fz', 'F3', 'F7', 'FT9', 'FC5', 'FC1', 'C3', 'T7', 'TP9', 'CP5', 'CP1', 'P3', 'P7', 'O1', 'OZ',
                 'O2', 'P4', 'P8', 'TP10', 'CP6', 'CP2', 'CZ', 'C4', 'T8', 'FT10', 'FC6', 'FC2', 'F4', 'F8', 'FP2']
     ch_types = len( ch_names ) * ['eeg']
-    info = mne.create_info( ch_names=ch_names, sfreq=500.0, ch_types=ch_types )
+    info = mne.create_info( ch_names=ch_names, sfreq=250.0, ch_types=ch_types )
     raw = mne.io.RawArray( array, info )
     return raw
 
@@ -321,6 +347,28 @@ def freq_bands(spectral_dict, theta_lim=[4, 8], alpha_lim=[8, 13], beta_lim=[13,
     band_with = np.asarray( band_with )
     return band_with
 
+def temporal_dataset(raw_eeg):
+    Hjorth = []
+    for s in range( len( raw_eeg ) ):
+        for k in raw_eeg[s].keys():
+            for epoch in range( raw_eeg[s][k].shape[0] ):
+
+                diff = np.diff(raw_eeg[s][k][epoch], axis=1) #compute 1st order derivative
+                ddiff = np.diff(diff, axis=1) #compute 2nd order derivative
+                var = np.var(raw_eeg[s][k][epoch], axis=1) #compute signal variance
+                dvar = np.var(diff, axis=1) #compute 1st order derivative variance
+                ddvar = np.var(ddiff, axis=1) #compute 2nd order derivative variance
+
+                tmp = []
+                for chan in range(raw_eeg[s][k].shape[1]):
+                    activity = var[chan] #Hjorth activity
+                    mobility = np.sqrt(dvar[chan]/var[chan]) #Hjorth mobility
+                    complexity = np.sqrt(ddvar[chan]/dvar[chan])/mobility #Hjorth complexity
+                    tmp.append([activity, mobility, complexity])
+                Hjorth.append(np.asarray(tmp))
+    Hjorth = np.asarray(Hjorth).swapaxes(1, 2)
+    Hjorth = 1e-5+(Hjorth - Hjorth.min())/np.max(Hjorth-Hjorth.min()) #avoid issues with images generation
+    return Hjorth
 
 """     IMAGE GENERATION        """
 
@@ -449,3 +497,172 @@ def Grap_Dataset(feat, label, edge_index):
     for i in range(feat.shape[0]):
         dataset.append(Data(x=torch.tensor(feat[i], dtype=torch.float), edge_index=edge_index, y=label[i]))
     return dataset
+
+
+
+"""     Saliency Map Estimation      """
+
+def sal_comp(path_raw, sub_dir):
+    path_sub = path_raw + sub_dir
+    for r, d, f in os.walk( path_sub ):
+        if 'RawSignals' in r:
+            for file in f:
+                if 'PhysiologicalSig' in file:
+                    PhySig = np.loadtxt( os.path.join( r, file ) )
+                elif 'Task2' in file:
+                    t2 = np.loadtxt( os.path.join( r, file ) )
+                elif 'Task3' in file:
+                    t3 = np.loadtxt( os.path.join( r, file ) )
+    s2, s3 = SaliencyMap(t2, t3, PhySig)
+    return s2, s3
+
+def SaliencyMap(task2, task3, physiological, b_t=1, a_t=3, ang_err = 37.5*np.pi/180, height=180, screen_ratio=1.8):
+    z_mean = np.mean(np.concatenate((task2[:, 3], task2[:, -1], task3[:, -1])))
+
+    # Task 2
+
+    task2_img = []
+    for t in task2[:, 0]:
+        id_t = np.logical_and(physiological[:, 0] > t - b_t, physiological[:, 0] < t + a_t)
+        phy_task2 = physiological[id_t]
+        img = []
+
+        x_min = np.inf
+        x_max = - np.inf
+        y_min = np.inf
+        y_max = - np.inf
+        rad_err = - np.inf
+
+        for l in phy_task2:
+            O = l[7:10]
+            v = l[10:13]
+            k = (z_mean - O[-1]) / v[-1]
+
+            D = v * k + O
+            img.append(D[0:2])
+
+            R = np.array([[1, 0, 0],
+                          [0, np.cos(ang_err), -np.sin(ang_err)],
+                          [0, np.sin(ang_err), np.cos(ang_err)]])
+
+            v = R @ v
+            k = (z_mean - O[-1]) / v[-1]
+
+            D_ = v * k + O
+            rad_err = np.max([np.sum(np.sqrt((D - D_) ** 2)), rad_err])
+
+            x_min = np.min([D[0], x_min])
+            x_max = np.max([D[0], x_max])
+            y_min = np.min([D[1], y_min])
+            y_max = np.max([D[1], y_max])
+
+        task2_img.append(np.asarray(img))
+
+    x_ad = 0
+    y_ad = 0
+
+    if np.ceil(x_max - x_min) > screen_ratio * np.ceil(y_max - y_min):
+        x_wide = np.ceil(x_max - x_min)
+        y_wide = x_wide / 1.8
+        scale = int(screen_ratio * height) / np.ceil(x_max - x_min)
+        y_ad = 0.5 * (np.ceil(x_max - x_min) / 1.8 - np.ceil(y_max - y_min))
+
+    else:
+        y_wide = np.ceil(y_max - y_min)
+        x_wide = y_wide / 1.8
+        scale = int(screen_ratio) / np.ceil(y_max - y_min)
+        x_ad = 0.5 * (np.ceil(y_max - y_min) * 1.8 - np.ceil(x_max - x_min))
+
+    print(task2_img)
+    assert(False)
+    Imagetask2 = []
+    for element in tqdm(task2_img):
+        #print(element)
+        image = np.zeros((height, int(screen_ratio * height)))  # attention y, x image coordinates
+        for p in element:
+            import matplotlib.pyplot as plt      
+            plt.scatter(p[0], p[1])
+            x_c = np.round((p[0] - x_min + x_ad) * scale)
+            y_c = np.round((p[1] - y_min + y_ad) * scale)
+            for y in range(int(np.floor(((p[1] - y_min + y_ad) - rad_err) * scale)),
+                           int(np.ceil(((p[1] - y_min + y_ad) + rad_err) * scale))):
+                for x in range(int(np.floor(((p[0] - x_min + x_ad) - rad_err) * scale)),
+                               int(np.ceil(((p[0] - x_min + x_ad) + rad_err) * scale))):
+                    if (x - x_c) ** 2 + (y - y_c) ** 2 < rad_err ** 2:
+                        image[y, x] = 1
+
+        image = cv.GaussianBlur(image, (25, 25), 7, 3)
+        Imagetask2.append(image)
+
+    # Task 3
+    
+
+    task3_img = []
+    for t in task3[:, 0]:
+        id_t = np.logical_and(physiological[:, 0] > t - b_t, physiological[:, 0] < t + a_t)
+        phy_task3 = physiological[id_t]
+        img = []
+
+        x_min = np.inf
+        x_max = - np.inf
+        y_min = np.inf
+        y_max = - np.inf
+        rad_err = - np.inf
+
+        for l in phy_task2:
+            O = l[7:10]
+            v = l[10:13]
+            k = (z_mean - O[-1]) / v[-1]
+
+            D = v * k + O
+            img.append(D[0:2])
+
+            R = np.array([[1, 0, 0],
+                          [0, np.cos(ang_err), -np.sin(ang_err)],
+                          [0, np.sin(ang_err), np.cos(ang_err)]])
+
+            v = R @ v
+            k = (z_mean - O[-1]) / v[-1]
+
+            D_ = v * k + O
+            rad_err = np.max([np.sum(np.sqrt((D - D_) ** 2)), rad_err])
+
+            x_min = np.min([D[0], x_min])
+            x_max = np.max([D[0], x_max])
+            y_min = np.min([D[1], y_min])
+            y_max = np.max([D[1], y_max])
+
+        task3_img.append(np.asarray(img))
+
+    x_ad = 0
+    y_ad = 0
+
+    if np.ceil(x_max - x_min) > screen_ratio * np.ceil(y_max - y_min):
+        x_wide = np.ceil(x_max - x_min)
+        y_wide = x_wide / 1.8
+        scale = int(screen_ratio * height) / np.ceil(x_max - x_min)
+        y_ad = 0.5 * (np.ceil(x_max - x_min) / 1.8 - np.ceil(y_max - y_min))
+
+    else:
+        y_wide = np.ceil(y_max - y_min)
+        x_wide = y_wide / 1.8
+        scale = int(screen_ratio) / np.ceil(y_max - y_min)
+        x_ad = 0.5 * (np.ceil(y_max - y_min) * 1.8 - np.ceil(x_max - x_min))
+
+    Imagetask3 = []
+    for element in tqdm(task3_img):
+        image = np.zeros((height, int(screen_ratio * height)))  # attention y, x image coordinates
+        for p in element:
+            x_c = np.round((p[0] - x_min + x_ad) * scale)
+            y_c = np.round((p[1] - y_min + y_ad) * scale)
+            for y in range(int(np.floor(((p[1] - y_min + y_ad) - rad_err) * scale)),
+                           int(np.ceil(((p[1] - y_min + y_ad) + rad_err) * scale))):
+                for x in range(int(np.floor(((p[0] - x_min + x_ad) - rad_err) * scale)),
+                               int(np.ceil(((p[0] - x_min + x_ad) + rad_err) * scale))):
+                    if (x - x_c) ** 2 + (y - y_c) ** 2 < rad_err ** 2:
+                        image[y, x] = 1
+        
+        image = cv.GaussianBlur(image, (25, 25), 7, 3)
+        Imagetask3.append(image)
+
+    return Imagetask2, Imagetask3

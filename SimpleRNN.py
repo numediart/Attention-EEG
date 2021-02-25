@@ -1,3 +1,22 @@
+'''
+Created by Victor Delvigne
+ISIA Lab, Faculty of Engineering University of Mons, Mons (Belgium)
+victor.delvigne@umons.ac.be
+Source: Delvigne, et al."PhyDAA: Physiological Dataset Assessing Attention" IEEE Transaction on Circuits and Systems for Video Technology (TCSVT) (2016).
+Copyright (C) 2021 - UMons
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+
+'''
 from utils import *
 from models import *
 import torch
@@ -16,9 +35,9 @@ warnings.simplefilter("ignore")
 
 """ Load Files """
 
-Images = np.load('Dataset/freq_band.npy')
-Label = np.load('Dataset/Label.npy')
-participant = np.load('Dataset/Participant.npy')
+Images = np.load('Dataset/... .npy')
+Label = np.load('Dataset/ ...npy')
+participant = np.load('Dataset/ ...npy')
 
 """ Model Training """
 
@@ -31,85 +50,69 @@ EEG = EEGImagesDataset(label=Label, image=Images)
 
 t = time.time()
 
-config = [
-    [8, 1],
-    [8, 2],
-    [8, 4],
-    [16, 1],
-    [16, 2],
-    [16, 4],
-    [32, 1],
-    [32, 2],
-    [32, 4],
-    [64, 1],
-    [64, 2],
-    [64, 4],
-]
+for patient in range(29):
+    idx = np.argwhere(participant == patient)[:, 0]
+    np.random.shuffle(idx)
+    Test = Subset(EEG, idx)
+    idx = np.argwhere(participant != patient)[:, 0]
+    np.random.shuffle(idx)
+    Train = Subset(EEG, idx)
 
+    Trainloader = DataLoader(Train, batch_size=batch_size, shuffle=False)
+    Testloader = DataLoader(Test, batch_size=batch_size, shuffle=False)
 
-for c in range(len(config)):
-    c+=7
-    for patient in range(29):
-        idx = np.argwhere(participant == patient)[:, 0]
-        np.random.shuffle(idx)
-        Test = Subset(EEG, idx)
-        idx = np.argwhere(participant != patient)[:, 0]
-        np.random.shuffle(idx)
-        Train = Subset(EEG, idx)
+    net = RegionRNN(64, 4, 3).cuda()
+    optimizer = optim.Adam(net.parameters())
 
-        Trainloader = DataLoader(Train, batch_size=batch_size, shuffle=False)
-        Testloader = DataLoader(Test, batch_size=batch_size, shuffle=False)
+    score = []
+    for epoch in range(n_epoch):
+        running_loss = 0.0
+        evaluation = []
+        for i, data in enumerate(Trainloader, 0):
+            # get the inputs; data is a list of [inputs, labels]
+            inputs, labels = data
+            del data
+            # zero the parameter gradients
+            optimizer.zero_grad()
 
-        net = RegionRNN(config[c][0], config[c][1], 3).cuda()
-        optimizer = optim.Adam(net.parameters())
+            # forward + backward + optimize
+            outputs = net(inputs.to(torch.float32).cuda())
+            loss = torch.nn.functional.cross_entropy(outputs, labels.to(torch.long).cuda())
+            loss.backward()
+            optimizer.step()
 
-        score = []
-        for epoch in range(n_epoch):
-            running_loss = 0.0
-            evaluation = []
-            for i, data in enumerate(Trainloader, 0):
-                # get the inputs; data is a list of [inputs, labels]
-                inputs, labels = data
-                del data
-                # zero the parameter gradients
-                optimizer.zero_grad()
+            _, predicted = torch.max(outputs, 1)
+            num_of_true = torch.sum(predicted.detach().cpu()==labels).numpy()
+            mean = num_of_true/labels.shape[0]
+            running_loss += loss.item()
+            evaluation.append(mean)
 
-                # forward + backward + optimize
-                outputs = net(inputs.to(torch.float32).cuda())
-                loss = torch.nn.functional.cross_entropy(outputs, labels.to(torch.long).cuda())
-                loss.backward()
-                optimizer.step()
+        running_loss = running_loss / (i + 1)
+        running_acc = sum(evaluation) / len(evaluation)
 
-                _, predicted = torch.max(outputs, 1)
-                num_of_true = torch.sum(predicted.detach().cpu()==labels).numpy()
-                mean = num_of_true/labels.shape[0]
-                running_loss += loss.item()
-                evaluation.append(mean)
+        validation_loss = 0.0
+        validation_acc = 0.0
+        evaluation = []
+        for i, data in enumerate(Testloader, 0):
+            input_img, labels = data
+            del data
+            input_img = input_img.to(torch.float32)
+            if True:
+                input_img = input_img.cuda()
+            outputs = net(input_img)
+            loss = torch.nn.functional.cross_entropy(outputs, labels.cuda())
+            validation_loss += loss.item()
 
-            running_loss = running_loss / (i + 1)
-            running_acc = sum(evaluation) / len(evaluation)
+            _, predicted = torch.max(outputs.cpu().data, 1)
+            num_of_true = torch.sum(predicted == labels).numpy()
 
-            validation_loss = 0.0
-            validation_acc = 0.0
-            evaluation = []
-            for i, data in enumerate(Testloader, 0):
-                input_img, labels = data
-                del data
-                input_img = input_img.to(torch.float32)
-                if True:
-                    input_img = input_img.cuda()
-                outputs = net(input_img)
-                loss = torch.nn.functional.cross_entropy(outputs, labels.cuda())
-                validation_loss += loss.item()
+            evaluation.append(num_of_true/labels.shape[0])
 
-                _, predicted = torch.max(outputs.cpu().data, 1)
-                num_of_true = torch.sum(predicted == labels).numpy()
+        validation_loss = validation_loss / (i + 1)
+        validation_acc = sum(evaluation) / len(evaluation)
+        score.append((running_loss, running_acc, validation_loss, validation_acc))
+        print("Epoch {} \t---\tLoss {:.4f}, Accuracy {:.4f}\t---\tVal-Loss {:.4f}, Val-Accuracy {:.4f}" .format(epoch+1, running_loss, running_acc, validation_loss, validation_acc))
+    
 
-                evaluation.append(num_of_true/labels.shape[0])
-
-            validation_loss = validation_loss / (i + 1)
-            validation_acc = sum(evaluation) / len(evaluation)
-            score.append((running_loss, running_acc, validation_loss, validation_acc))
-
-        score = np.asarray(score)
-        np.save('res_freq_array/sub_'+str(c)+'_'+str(patient), score)
+    score = np.asarray(score)
+    np.save('res_freq_array_sub_'+str(patient), score)

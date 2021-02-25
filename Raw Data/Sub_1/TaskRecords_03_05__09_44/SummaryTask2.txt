@@ -1,3 +1,0 @@
-Total Number of Spheres: 82
- Right: 70
- Wrong: 7

@@ -1,3 +1,23 @@
+'''
+Created by Victor Delvigne
+ISIA Lab, Faculty of Engineering University of Mons, Mons (Belgium)
+victor.delvigne@umons.ac.be
+Source: Delvigne, et al."PhyDAA: Physiological Dataset Assessing Attention" IEEE Transaction on Circuits and Systems for Video Technology (TCSVT) (2016).
+Copyright (C) 2021 - UMons
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+
+'''
+
 import torch
 
 import torch.nn as nn
@@ -42,14 +62,14 @@ class ImageAEDataset(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        image = self.Images[idx]
+        image = torch.tensor(self.Images[idx])
         return image
 
 
 ### MODELS ###
-class Autoencoder(nn.Module):
+class Autoencoder_Img(nn.Module):
     def __init__(self):
-        super(Autoencoder, self).__init__()
+        super(Autoencoder_Img, self).__init__()
         # encoder
         self.Encoder = nn.Sequential(
             nn.Conv2d(401, 256, kernel_size=3, stride=3, padding=1),
@@ -75,6 +95,30 @@ class Autoencoder(nn.Module):
             nn.ConvTranspose2d(256, 401, kernel_size=5, stride=3, padding=1),
             nn.ReLU(True),
             nn.ConvTranspose2d(401, 401, kernel_size=2, stride=2, padding=2)
+        )
+
+    def forward(self, x):
+        x = self.Encoder(x)
+        x = self.Decoder(x)
+
+        return x
+
+class Autoencoder(nn.Module):
+    def __init__(self):
+        super(Autoencoder, self).__init__()
+        # encoder
+        self.Encoder = nn.Sequential(
+            nn.Linear(31, 16),
+            nn.ReLU(True),
+            nn.Linear(16, 2),
+            nn.Tanh(),
+            #Flatten(),
+        )
+        # decoder
+        self.Decoder = nn.Sequential(
+            nn.Linear(2, 16),
+            nn.ReLU(True),
+            nn.Linear(16, 31),
         )
 
     def forward(self, x):

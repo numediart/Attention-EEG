@@ -1,3 +1,22 @@
+'''
+Created by Victor Delvigne
+ISIA Lab, Faculty of Engineering University of Mons, Mons (Belgium)
+victor.delvigne@umons.ac.be
+Source: Delvigne, et al."PhyDAA: Physiological Dataset Assessing Attention" IEEE Transaction on Circuits and Systems for Video Technology (TCSVT) (2016).
+Copyright (C) 2021 - UMons
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+
+'''
 from models import *
 from utils import *
 from graph_models import *
@@ -7,7 +26,8 @@ warnings.simplefilter("ignore")
 
 """ Load Files """
 
-label = np.load('Dataset/Label.npy')
+# computation of adjacency matrix 
+label = np.load('Dataset/... .npy')
 locs_3d = np.load('Information/ChanInfo.npy', allow_pickle=True).all()['position']
 A = comp_adjacency_mat(locs_3d)
 edge_index = A2edge_index(A)
@@ -17,13 +37,13 @@ participant = np.load('Dataset/Participant.npy')
 """ Model Training """
 
 batch_size = 64
-n_epoch = 250
+n_epoch = 500
 n_rep = 10
 dataset = Grap_Dataset(feat=feat, label=label, edge_index=edge_index)
 
 Res = []
 
-config = [16]
+config = [16, 32, 64, 128] #trying different hidden configuration
 
 for c in range(len(config)):
     for patient in range(29):
@@ -40,7 +60,6 @@ for c in range(len(config)):
         optimizer = optim.Adam(net.parameters())
         criterion = nn.CrossEntropyLoss()
 
-        #writer = SummaryWriter()
 
         validation_loss = 0.0
         validation_acc = 0.0
@@ -89,11 +108,7 @@ for c in range(len(config)):
 
                 validation_loss = validation_loss / (i + 1)
                 validation_acc = sum(evaluation) / len(evaluation)
-            #writer.add_scalar('Loss/train', running_loss, epoch)
-            #writer.add_scalar('Loss/test', validation_loss, epoch)
-            #writer.add_scalar('Accuracy/train', running_acc, epoch)
-            #writer.add_scalar('Accuracy/test', validation_acc, epoch)
             score.append((running_loss, running_acc, validation_loss, validation_acc))
-            # print("Epoch {} \t---\tLoss {:.4f}, Accuracy {:.4f}\t---\tVal-Loss {:.4f}, Val-Accuracy {:.4f}" .format(epoch+1, running_loss, running_acc, validation_loss, validation_acc))
+            print("Epoch {} \t---\tLoss {:.4f}, Accuracy {:.4f}\t---\tVal-Loss {:.4f}, Val-Accuracy {:.4f}" .format(epoch+1, running_loss, running_acc, validation_loss, validation_acc))
         score = np.asarray(score)
-        np.save('res/res_graph_freq/sub_' + str(c) + '_' + str(patient), score)
+        np.save('res/res_graph_freq_sub_' + str(patient), score)
