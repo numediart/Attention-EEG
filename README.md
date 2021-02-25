@@ -20,9 +20,8 @@ A .py file is provided to try each models, you just have to adapt the path to di
 ## Requirements
 
 In order to run the codes, the following libraries (and their corresponding dependencies) have to been installed:
-
 - Python     3.8
-- Pytroch     1.5.1
+- Pytorch     1.5.1
 - Cudatoolkit     10.1.243
 - Torch-Geometric 1.6.1 (mandatory only for Graph based model) 
 
