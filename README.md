@@ -30,7 +30,20 @@ Import of the environment with conda: `conda env create -f environment.yml`
 
 ## Citation
 
-If you use the dataset, please cite the original papers: 
+If you use the dataset, please cite the original paper:
+
+	@article{delvigne_phydaa_2021,
+		title = {{PhyDAA}: {Physiological} {Dataset} {Assessing} {Attention}},
+		issn = {1558-2205},
+		shorttitle = {{PhyDAA}},
+		doi = {10.1109/TCSVT.2021.3061719},
+		journal = {IEEE Transactions on Circuits and Systems for Video Technology},
+		author = {Delvigne, V. and Wannous, H. and Dutoit, T. and Ris, L. and Vandeborre, J.-P.},
+		year = {2021},
+		pages = {1--1}
+	}
+
+and for the CNN:
 
 	@inproceedings{delvigne_attention_2020,
 		title = {Attention {Estimation} in {Virtual} {Reality} with {EEG} based {Image} {Regression}},
