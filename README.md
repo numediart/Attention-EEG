@@ -26,6 +26,8 @@ In order to run the codes, the following libraries (and their corresponding depe
 - Torch-Geometric 1.6.1 (mandatory only for Graph based model) 
 
 Installation with pip: `pip install -r requirements.txt`
+Then to install pytorch and pytorch-geometric, follow the installation guide in the corresponding documentation ([pytorch](https://pytorch.org/get-started/locally/) and [pytorch-geometric](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html)). 
+
 Import of the environment with conda: `conda env create -f environment.yml`
 
 ## Citation
