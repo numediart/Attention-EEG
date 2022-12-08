@@ -4,7 +4,7 @@ apptools==4.5.0
 ase==3.20.1
 backcall==0.2.0
 cachetools==4.1.1
-certifi==2020.6.20
+certifi==2022.12.7
 cftime==1.1.2
 chardet==3.0.4
 configobj==5.0.6
