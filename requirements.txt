@@ -22,7 +22,7 @@ idna==2.10
 imageio==2.8.0
 ipython-genutils==0.2.0
 isodate==0.6.0
-Jinja2==2.11.2
+Jinja2==2.11.3
 kiwisolver==1.2.0
 llvmlite==0.32.1
 Markdown==3.2.2
